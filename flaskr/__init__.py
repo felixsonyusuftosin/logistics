@@ -5,7 +5,7 @@ from flask import Flask
 from distutils.tests import test_config
 from flaskr.settings import init_env
 from flaskr.database import init_app
-from flaskr.views.catalog import Catalog
+from flaskr.views.catalog import catalog_bp
 
 def create_app(ttest_config=None):
   init_env()
@@ -28,8 +28,7 @@ def create_app(ttest_config=None):
       os.makedirs(app.instance_path)
   except OSError:
       pass
-    
-  catalog = Catalog()
-  app.register_blueprint(catalog.catalog_bp)
+
+  app.register_blueprint(catalog_bp)
   
   return app
