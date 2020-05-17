@@ -38,11 +38,39 @@ restock_validate_schema = {
                 "type": 'integer'
             },
             "quanity": {
-                "description": "Quantity of orders required",
+                "description": "Quantity to ne stoked",
                 "type": "integer"
             },
         },
         "required": ["product_id", "quantity"]
     },
 
+}
+
+process_order_schema = {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "process_order",
+    "description": "Process orders",
+    "type": "object",
+    "properties": {
+        "order_id": {
+            "description": "The unique ids for the request",
+            "type": "integer",
+        },
+        "requested": {
+            "type": "array",
+            "description": "Requested paylaod",
+            "properties": {
+                "product_id": {
+                    "description": "The unique identifier for the product",
+                    "type": 'integer'
+                },
+                "quanity": {
+                    "description": "Quantity to ne stoked",
+                    "type": "integer"
+                },
+            }
+        }
+
+    }
 }

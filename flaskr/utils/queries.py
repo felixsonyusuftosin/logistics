@@ -7,8 +7,10 @@ import json
 class Query():
     def __init__(self, db):
         self.db = db
-    
-
+    ''' 
+    Catalog queryies. 
+    ------------------------
+    '''
     def load_single_catalog(self, catalog):
         q = '''INSERT INTO products
           (product_id, mass_g, product_name)
@@ -28,7 +30,11 @@ class Query():
         cursor = self.execute_query(q)
         rows = cursor.fetchall()
         return self.convert_rows_to_list(rows, cursor)
-   
+    
+    ''' 
+    Stock queryies. 
+    ------------------------
+    '''
     def update_one_stock(self, stock):
       q = 'UPDATE stock SET quantity={} where product_id = {}'.format(stock['quantity'], stock['product_id'])
       cursor = self.execute_query(q)
@@ -44,6 +50,23 @@ class Query():
       for stock in stocks:
         self.update_one_stock(stock)
       return { 'message': 'successfully updated all stocks' }
+  
+    ''' 
+    Stock_view queryies. 
+    ------------------------
+    '''
+    def get_stock_info(self, product_id):
+      q = 'SELECT * from v_stock WHERE v_stock.product_id ={};'.format(product_id)
+      cursor = self.execute_query(q)
+      row = cursor.fetchone()
+      return self.convert_row_to_dict(row)
+    
+
+
+    '''
+     Utility Methods
+     ------------------------
+    '''
 
     def execute_query(self, query):
         try:
@@ -60,3 +83,6 @@ class Query():
         columns = [column[0] for column in cursor.description]
         results = [dict(zip(columns, row)) for row in rows]
         return results
+      
+    def convert_row_to_dict(self, row):
+        return dict(zip(row.keys(), row))  
