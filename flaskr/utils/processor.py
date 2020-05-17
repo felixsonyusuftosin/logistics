@@ -12,7 +12,6 @@ class Processor():
         try:
             catalogs = incomming_request.get_json()
             validate(catalogs, schema=validation_schema)
-            print('validating')
             return catalogs
 
         except (ValidationError, SchemaError) as e:
