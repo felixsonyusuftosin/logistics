@@ -6,8 +6,20 @@ CREATE TABLE products (
   product_name TEXT NOT NULL
 );
 
-CREATE TABLE STOCK (
+DROP TABLE IF EXISTS stock;
+CREATE TABLE stock (
   product_id INTEGER NOT NULL REFERENCES products (product_id),
-  quantiy INTEGER NOT NULL DEFAULT 0
+  quantity INTEGER DEFAULT  0
+);
 
-)
+
+CREATE VIEW IF NOT EXISTS v_stock
+AS 
+SELECT 
+    p.product_id,
+    p.mass_g,
+    s.quantity As quantity,
+    s.quantity * p.mass_g As available_mass_g
+FROM 
+   products as p
+INNER JOIN stock as s ON s.product_id = p.product_id

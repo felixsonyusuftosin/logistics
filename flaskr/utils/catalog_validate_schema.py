@@ -29,7 +29,7 @@ restock_validate_schema = {
     "$schema": "http://json-schema.org/draft-07/schema#",
     "title": "catalog_restock",
     "description": "Catalog restock",
-    "type": "a",
+    "type": "array",
     "items": {
         "type": "object",
         "properties": {
@@ -37,16 +37,12 @@ restock_validate_schema = {
                 "description": "The unique identifier for the product",
                 "type": 'integer'
             },
-            "mass_g": {
-                "description": "This is the mass (grams) of the this product stocked currently",
+            "quanity": {
+                "description": "Quantity of orders required",
                 "type": "integer"
             },
-            "product_name": {
-                "description": "This is the name of the product",
-                "type": "string"
-            }
         },
-        "required": ["product_id", "mass_g", "product_name"]
+        "required": ["product_id", "quantity"]
     },
 
 }

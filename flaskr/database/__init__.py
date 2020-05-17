@@ -29,6 +29,8 @@ def init_db():
 
     with current_app.open_resource(os.path.join(Path(__file__).resolve().parent, 'schema.sql')) as f:
         db.executescript(f.read().decode('utf8'))
+    with current_app.open_resource(os.path.join(Path(__file__).resolve().parent, 'triggers.sql')) as t:
+        db.executescript(t.read().decode('utf8'))
 
 
 @click.command('init-db')
