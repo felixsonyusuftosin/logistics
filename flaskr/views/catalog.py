@@ -51,7 +51,7 @@ def process_restock():
     if request.method == 'POST':
         stocks = processor.validate_json(request, restock_validate_schema)
         success = query.update_stocks(stocks)
-        process_order.attempt_process_unfulfilled_orders()
+        process_order.process_backlog_queue()
         response = processor.format_success_response(success)
         return response
     else:

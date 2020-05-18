@@ -2,8 +2,9 @@
 from flaskr.utils.queries import Query
 from flaskr.database import get_db
 
+
 class ProcessOrder:
-    ''' Contain methods to process orders '''
+    ''' Contain methods to process orders, a singleton for the purpose of maintaining queue states  '''
     _instance = None
 
     def __new__(cls):
@@ -13,103 +14,121 @@ class ProcessOrder:
 
     def __init__(self):
         self._cutoff_mass = 1800
-        self._unfulfilled_queue = self.Queue()
+        self._backlog_queue = self.__Queue()
+        self._ship_queue = self.__Queue()
+
         db = get_db()
+
         self._query = Query(db)
 
-    def enqueue(self, func, args=[], kwargs={}, high_priority=False):
-        item = self.packCall(func, args, kwargs)
-        return self._queue.enqueue(item, high_priority)
+    def initiate_order(self, order):
+        ''' Called when we want to ship an order, checks the constraints and enqueue into ship queue as appropriate.'''
 
-    def attempt_process_unfulfilled_orders(self):
-        while self._unfulfilled_queue.has_more():
-            element = self._unfulfilled_queue.dequeue()
+        order_id = order['order_id']
+        requested = order['requested']
+        order_mass = 0
+        count = 0
+        unfulfilled_orders = {'order_id': order_id, 'requested': []}
+        fulfilled_orders = {'order_id': order_id, 'requested': []}
+
+        while order_mass < self._cutoff_mass and count < len(requested) - 1:
+            req = requested[count]
+            stock = self._query.get_stock_info(req['product_id'])
+            order_unit_mass = stock['mass_g']
+            current_order_quantity = req['quantity']
+            available_quantity = stock['quantity']
+            product_id = req['product_id']
+
+            fulfillable = self._check_order_constraint(
+                self._cutoff_mass, current_order_quantity, order_unit_mass, available_quantity, order_mass)
+            order_mass += fulfillable * order_unit_mass
+            unfulfillable = abs(fulfillable - current_order_quantity)
+
+            if (unfulfillable > 0):
+                unfulfilled_orders['requested'].append(
+                    {'product_id': product_id, 'quantity': unfulfillable})
+            if (fulfillable > 0):
+                fulfilled_orders['requested'].append(
+                    {'product_id': product_id, 'quantity': unfulfillable})
+            count += 1
+
+        self._set_order_into_backlog_queue(fulfilled_orders)
+        self._set_order_into_backlog_queue(unfulfilled_orders)
+
+        return {
+            'message':
+            'Set processed orders: {} -- {} into shipment Queue Set unfulfillable orders: {} --{} into backlogQueue'
+            .format(fulfillable, fulfilled_orders, unfulfillable, unfulfilled_orders)}
+
+    def process_backlog_queue(self):
+        while self._backlog_queue.has_more():
+            element = self._backlog_queue.dequeue()
+            (func, args, kwargs) = element
+            self._ship_queue._enqueue(element)
+        self.process_ship_queue()
+        return
+
+    def process_ship_queue(self):
+        while self._ship_queue.has_more():
+            element = self._ship_queue.dequeue()
             (func, args, kwargs) = element
             func(args, kwargs)
         return
 
-    def packCall(self, func, args, kwargs):
+    def _enqueue(self, func, args=[], kwargs={}, high_priority=False):
+        item = self.packCall(func, args, kwargs)
+        return self._queue.enqueue(item, high_priority)
+
+    def _packCall(self, func, args, kwargs):
         return (func, args, kwargs)
 
-    def _pipeline_stock_constraint(self, **kwargs):
-        ''' Run a pipe to check if what is available can fulfill the order '''
-        order_quantity = kwargs['order_quantity']
-        available_quantity = kwargs['available_quantity']
-        order_mass = kwargs['order_mass']
-        available_mass = kwargs['available_mass']
-        if order_mass > available_mass:
-            stockable_order = order_quantity - available_quantity
-            unstockable_order = abs(stockable_order - order_quantity)
-            return {'fillable': stockable_order, 'unfillable': unstockable_order}
-        return {'fillable': order_quantity, 'unfillable': 0}
+    def _set_order_into_ship_queue(self, order):
+        ship_items = order['requested']
+        if len(ship_items) > 0:
+            self._ship_queue.enqueue(
+                self._ship_order, [order])
+        print('set order {} into ship queue'.format(order))
 
-    def _pipeline_mass_constraint(self, **kwargs):
-        ''' Run a pipe to check if the order does not exceed the allowable mass '''
-        fulfilment_stats = kwargs['fulfilment_stats']
-        order_mass = kwargs['order_mass']
-        unit_mass = kwargs['unit_mass']
-        fillable = fulfilment_stats['fillable']
-        unfillable = fulfilment_stats['unfillable']
-        fillable_mass = fillable * unit_mass
-        if fillable_mass > self._cutoff_mass:
-            excess_quantity = (self._cutoff_mass -
-                                (fillable_mass))/order_mass
-            fillable = fillable - abs(excess_quantity)
-            unfillable = unfillable + abs(excess_quantity)
-            return {'fillable': fillable, 'unfillable': unfillable}
-        return fulfilment_stats
-
-    def _compute_order_from_stock(self, order, stock, order_mass=0):
-        available_mass = stock['available_mass_g']
-        available_quantity = stock['quantity']
-        unit_mass = stock['mass_g']
-        order_mass = order['quantity'] * unit_mass
-        order_quantity = order['quantity']
-        product_id = stock['product_id']
-        after_stock_constraint = self._pipeline_stock_constraint(
-            order_quantity=order_quantity, available_quantity=available_quantity,
-            order_mass=order_mass, available_mass=available_mass)
-        after_pipeline_mass_constraint = self._pipeline_mass_constraint(
-            fulfilment_stats=after_stock_constraint, order_mass=order_mass, unit_mass=unit_mass)
-        # Todo update the stock table
-        new_stock_quantity = available_quantity - \
-            after_pipeline_mass_constraint['fillable']
-        self._query.update_one_stock(
-            {'product_id': product_id, 'quantity': new_stock_quantity})
-        new_order_mass = (new_stock_quantity * unit_mass) + order_mass
-        return {'fillable': after_pipeline_mass_constraint['fillable'],
-                'unfillable': after_pipeline_mass_constraint['unfillable'], 'order_mass': new_order_mass}
-
-    def initiate_order(self, order):
-        order_id = order['order_id']
+    def _set_order_into_backlog_queue(self, order):
         requested = order['requested']
-        order_mass = 0
-        unfulfilled_orders = {'order_id': order_id, 'requested': []}
-        fulfilled_orders = {'order_id': order_id, 'shipped': []}
-        for req in requested:
-            stock = self._query.get_stock_info(req['product_id'])
-            processed_order = self._compute_order_from_stock(
-                req, stock, order_mass)
-            order_mass = processed_order['order_mass']
-            unfulfilled_orders_quantity = processed_order['unfillable']
-            fulfilled_orders_quantity = processed_order['fillable']
-            unfulfilled_orders['requested'].append(
-                {'product_id': req['product_id'], 'quantity': unfulfilled_orders_quantity})
-            fulfilled_orders['shipped'].append(
-                {'product_id': req['product_id'], 'quantity': unfulfilled_orders_quantity})
-        if len(unfulfilled_orders['requested']) > 0:
-            self.queue_unfulfilled_order(unfulfilled_orders, order_id)
-        return self.ship_package(fulfilled_orders, unfulfilled_orders)
+        if len(requested) > 0:
+            self._backlog_queue.enqueue(self.initiate_order, [order])
+        print('set order {} into backlog queue'.format(order))
 
-    def ship_package(self, order, unfulfilled):
-        return 'Process: {}, unFulifilled: {}'.format(order, unfulfilled)
+    def _ship_order(self, order):
+        ''' method to ship the order and removes the order from stock '''
 
-    def queue_unfulfilled_order(self, order, order_id):
-        self._unfulfilled_queue.enqueue(self.initiate_order, [order_id, order])
-        print(
-            'Queued unfulfilled order with details {} to run un next restock '.format(order))
+        ship_items = order['requested']
+        for item in ship_items:
+            self._query.update_one_stock(item)
+        print('shipped {}'.format(order))
 
-    class Queue:
+    def _check_order_constraint(self, cutoff_mass, current_order_quantity, order_unit_mass, available_quantity, order_cumulated_mass):
+        ''' util method to check constaints  '''
+
+        if current_order_quantity == 0:
+            return current_order_quantity
+
+        def _check_availability():
+            orders_abailable = 0
+            excess_order = current_order_quantity - available_quantity
+            if excess_order > 0:
+                orders_available = available_quantity
+            else:
+                orders_available = current_order_quantity
+            return orders_available
+
+        def _check_mass_constraint(fillable_orders):
+            if (order_unit_mass * fillable_orders) + order_cumulated_mass <= cutoff_mass or fillable_orders < 1:
+                return fillable_orders
+            fillable_orders = fillable_orders - 1
+            return _check_mass_constraint(fillable_orders)
+        _orders_available = _check_availability()
+        fillable_orders = _check_mass_constraint(_orders_available)
+
+        return fillable_orders
+
+    class __Queue:
         ''' Utility queue class. '''
 
         def __init__(self):
@@ -127,4 +146,3 @@ class ProcessOrder:
 
         def dequeue(self):
             return self._list.pop(0)
-
