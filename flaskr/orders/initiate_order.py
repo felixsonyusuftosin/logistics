@@ -12,10 +12,12 @@ class ProcessInitiateOrder(Process):
         count = 0
         unfulfilled_orders = {'order_id': order_id, 'requested': []}
         fulfilled_orders = {'order_id': order_id, 'requested': []}
+        constraint_passed = order_mass < self._cutoff_mass and count < len(requested)
 
-        while order_mass < self._cutoff_mass and count < len(requested):
+        while constraint_passed:
             req = requested[count]
-            stock = self._query.get_stock_info(req['product_id'])
+            product_id = req['product_id']
+            stock = self._query.get_stock_info(product_id)
             order_unit_mass = stock['mass_g']
             current_order_quantity = req['quantity']
             available_quantity = stock['quantity']
