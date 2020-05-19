@@ -7,7 +7,7 @@ from flaskr.settings import init_env
 from flaskr.database import init_app
 from flaskr.views.catalog import catalog_bp
 
-def create_app(ttest_config=None):
+def create_app(test_config=None):
   init_env()
   # Configure and create app.
   app = Flask(__name__, instance_relative_config=True)

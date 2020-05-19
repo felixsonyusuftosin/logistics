@@ -7,6 +7,7 @@ CREATE TRIGGER IF NOT EXISTS
         VALUES (NEW.product_id, 0);
    END;
 
+
 CREATE TRIGGER IF NOT EXISTS 
    delete_stock_from_catalog_delete
    AFTER DELETE

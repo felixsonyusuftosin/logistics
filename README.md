@@ -5,7 +5,7 @@
 - install dependencies  `pip3 install -r requirements.txt`
 - create a .env file and copy the contents of .env.example into the .env file 
 - run the app with `flask run`
-- open a new termminal and run `flaskr init-db` to initialize db
+- open a new termminal and run `flask init-db` to initialize db
 
 
 ## Available endpints 

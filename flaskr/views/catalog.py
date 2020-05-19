@@ -9,10 +9,9 @@ from flaskr.utils.catalog_validate_schema import (
     catalog_validate_schema, restock_validate_schema ,process_order_schema)
 from flaskr.utils.exceptions import (InvalidInputEntered, DatabaseWriteError)
 from flaskr.utils.processor import Processor
-from flaskr.utils.process_order import ProcessOrder
 from flaskr.utils.queries import Query
 from flaskr.database import get_db
-from flaskr.utils import get_order_state
+from flaskr.orders import Orders
 
 catalog_bp = Blueprint('catalog_bp', __name__)
 
@@ -49,7 +48,7 @@ def process_restock():
     db = get_db()
     query = Query(db)
     processor = Processor()
-    process_order = get_order_state()
+    process_order = Orders()
     if request.method == 'POST':
         stocks = processor.validate_json(request, restock_validate_schema)
         success = query.update_stocks(stocks)
@@ -66,7 +65,7 @@ def process_restock():
 @catalog_bp.route('/order/process', methods=['POST', 'GET'])
 def process_order():
     processor = Processor()
-    process_order = get_order_state()
+    process_order = Orders()
     if request.method == 'POST':
       order = processor.validate_json(request, process_order_schema)
       success = process_order.initiate_order(order)
@@ -80,7 +79,7 @@ def process_order():
 @catalog_bp.route('/order/ship', methods=['POST','GET'])
 def ship_package():
   processor = Processor()
-  process_order = get_order_state()
+  process_order = Orders()
   if request.method == 'POST':
     process_order.process_ship_queue()
     package = request.get_json()
