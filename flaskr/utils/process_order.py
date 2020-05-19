@@ -5,21 +5,17 @@ from flaskr.database import get_db
 
 class ProcessOrder:
     ''' Contain methods to process orders, a singleton for the purpose of maintaining queue states  '''
-    _instance = None
-
-    def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super(ProcessOrder, cls).__new__(cls)
-        return cls._instance
 
     def __init__(self):
         self._cutoff_mass = 1800
-        self._backlog_queue = self.__Queue()
-        self._ship_queue = self.__Queue()
-
         db = get_db()
-
         self._query = Query(db)
+
+    def __repr__(self):
+        backlog = self._query.get_backlog_items()
+        ready = self._query.get_ready_items()
+        shipped = self._query.get_shipped_items()
+        return 'Backlog: {}\nReady Shipment: {}\nShipped: {}'.format(len(backlog), len(ready), len(shipped))
 
     def initiate_order(self, order):
         ''' Called when we want to ship an order, checks the constraints and enqueue into ship queue as appropriate.'''
@@ -31,7 +27,8 @@ class ProcessOrder:
         unfulfilled_orders = {'order_id': order_id, 'requested': []}
         fulfilled_orders = {'order_id': order_id, 'requested': []}
 
-        while order_mass < self._cutoff_mass and count < len(requested) - 1:
+
+        while order_mass < self._cutoff_mass and count < len(requested):
             req = requested[count]
             stock = self._query.get_stock_info(req['product_id'])
             order_unit_mass = stock['mass_g']
@@ -49,59 +46,50 @@ class ProcessOrder:
                     {'product_id': product_id, 'quantity': unfulfillable})
             if (fulfillable > 0):
                 fulfilled_orders['requested'].append(
-                    {'product_id': product_id, 'quantity': unfulfillable})
+                    {'product_id': product_id, 'quantity': fulfillable})
             count += 1
 
-        self._set_order_into_backlog_queue(fulfilled_orders)
+        self._set_order_into_ship_queue(fulfilled_orders)
         self._set_order_into_backlog_queue(unfulfilled_orders)
 
-        return {
-            'message':
-            'Set processed orders: {} -- {} into shipment Queue Set unfulfillable orders: {} --{} into backlogQueue'
-            .format(fulfillable, fulfilled_orders, unfulfillable, unfulfilled_orders)}
+        backlog = self._query.get_backlog_items()
+        ready = self._query.get_ready_items()
+        shipped = self._query.get_shipped_items()
+        return 'Backlog: {}\nReady Shipment: {}\nShipped: {}'.format(len(backlog), len(ready), len(shipped))
 
     def process_backlog_queue(self):
-        while self._backlog_queue.has_more():
-            element = self._backlog_queue.dequeue()
-            (func, args, kwargs) = element
-            self._ship_queue._enqueue(element)
-        self.process_ship_queue()
+        to_ship = self._query.get_backlog_items()
+        for item in to_ship:
+            self.initiate_order(item)
         return
 
     def process_ship_queue(self):
-        while self._ship_queue.has_more():
-            element = self._ship_queue.dequeue()
-            (func, args, kwargs) = element
-            func(args, kwargs)
+        to_ship = self._query.get_ready_items()
+        for item in to_ship:
+            self._query.commit_ship_orders(item)
         return
-
-    def _enqueue(self, func, args=[], kwargs={}, high_priority=False):
-        item = self.packCall(func, args, kwargs)
-        return self._queue.enqueue(item, high_priority)
-
-    def _packCall(self, func, args, kwargs):
-        return (func, args, kwargs)
 
     def _set_order_into_ship_queue(self, order):
         ship_items = order['requested']
         if len(ship_items) > 0:
-            self._ship_queue.enqueue(
-                self._ship_order, [order])
+            self._query.add_order_to_ready_orders(order)
+            self._update_stock(order)     
         print('set order {} into ship queue'.format(order))
 
     def _set_order_into_backlog_queue(self, order):
         requested = order['requested']
         if len(requested) > 0:
-            self._backlog_queue.enqueue(self.initiate_order, [order])
+            self._query.add_order_to_backlog(order)
+        else:
+          self._query.clear_backlog_for_order(order['order_id'])
         print('set order {} into backlog queue'.format(order))
 
-    def _ship_order(self, order):
+    def _update_stock(self, order):
         ''' method to ship the order and removes the order from stock '''
-
         ship_items = order['requested']
         for item in ship_items:
-            self._query.update_one_stock(item)
-        print('shipped {}'.format(order))
+            self._query.remove_from_stock(item)
+        print('updated stock {}'.format(order))
 
     def _check_order_constraint(self, cutoff_mass, current_order_quantity, order_unit_mass, available_quantity, order_cumulated_mass):
         ''' util method to check constaints  '''
@@ -123,26 +111,7 @@ class ProcessOrder:
                 return fillable_orders
             fillable_orders = fillable_orders - 1
             return _check_mass_constraint(fillable_orders)
+
         _orders_available = _check_availability()
         fillable_orders = _check_mass_constraint(_orders_available)
-
         return fillable_orders
-
-    class __Queue:
-        ''' Utility queue class. '''
-
-        def __init__(self):
-            self._list = []
-
-        def enqueue(self, item, high_priority):
-            if high_priority:
-                self._list.insert(0, item)
-            else:
-                self._list.append(item)
-            return
-
-        def has_more(self):
-            return len(self._list) > 0
-
-        def dequeue(self):
-            return self._list.pop(0)
