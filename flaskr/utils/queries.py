@@ -8,11 +8,9 @@ from collections import defaultdict
 class Query():
     def __init__(self, db):
         self.db = db
-    ''' 
-    Catalog queryies. 
-    ------------------------
-    '''
-
+  
+    '''  Catalog queryies.   '''
+    
     def load_single_catalog(self, catalog):
         q = '''INSERT INTO products
           (product_id, mass_g, product_name)
@@ -33,10 +31,8 @@ class Query():
         rows = cursor.fetchall()
         return self.convert_rows_to_list(rows, cursor)
 
-    ''' 
-    Stock queryies. 
-    ------------------------
-    '''
+    ''' Stock queryies.'''
+
     def get_one_stock(self, product_id):
       q = 'SELECT * FROM stock WHERE product_id={}'.format(product_id)
       cursor = self.execute_query(q)
@@ -78,10 +74,7 @@ class Query():
             self.update_one_stock(stock)
         return {'message': 'successfully updated all stocks'}
 
-    ''' 
-    Stock_view queries. 
-    ------------------------
-    '''
+    '''  Stock_view queries.  '''
 
     def get_stock_info(self, product_id):
         q = 'SELECT * from v_stock WHERE v_stock.product_id ={};'.format(
@@ -90,10 +83,7 @@ class Query():
         row = cursor.fetchone()
         return self.convert_row_to_dict(row)
 
-    '''
-     Utility Methods
-     ------------------------
-    '''
+    '''  Utility Methods ------------------------ '''
 
     def execute_query(self, query):
         try:
